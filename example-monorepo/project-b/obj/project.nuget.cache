@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "DCUpgJqpJqagpFBdmk3xkrTY9MyZU3HV6EBnnmEewlYVZxXnS6pa7PePdjRLCX6jmZU3LeE2oFdNwNDukNxSOw==",
+  "success": true,
+  "projectFilePath": "/home/james/mybuild2/example-monorepo/project-b/project-b.csproj",
+  "expectedPackageFiles": [
+    "/home/james/.nuget/packages/microsoft.aspnetcore.app.ref/6.0.10/microsoft.aspnetcore.app.ref.6.0.10.nupkg.sha512"
+  ],
+  "logs": []
+}

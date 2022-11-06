@@ -1,0 +1,12 @@
+task(
+  name = "build",
+  cmds = ["dotnet build"],
+  srcs = ["Class1.cs"],
+  outs = ["./bin/**/*", "./obj/**/*"],
+  deps = [":hello"],
+)
+
+task(
+  name = "hello",
+  cmds = ["echo hello world"],
+)

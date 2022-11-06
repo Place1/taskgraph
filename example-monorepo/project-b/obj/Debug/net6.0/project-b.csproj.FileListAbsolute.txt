@@ -1,0 +1,12 @@
+/home/james/mybuild2/example-monorepo/project-b/bin/Debug/net6.0/project-b.deps.json
+/home/james/mybuild2/example-monorepo/project-b/bin/Debug/net6.0/project-b.dll
+/home/james/mybuild2/example-monorepo/project-b/bin/Debug/net6.0/ref/project-b.dll
+/home/james/mybuild2/example-monorepo/project-b/bin/Debug/net6.0/project-b.pdb
+/home/james/mybuild2/example-monorepo/project-b/obj/Debug/net6.0/project-b.csproj.AssemblyReference.cache
+/home/james/mybuild2/example-monorepo/project-b/obj/Debug/net6.0/project-b.GeneratedMSBuildEditorConfig.editorconfig
+/home/james/mybuild2/example-monorepo/project-b/obj/Debug/net6.0/project-b.AssemblyInfoInputs.cache
+/home/james/mybuild2/example-monorepo/project-b/obj/Debug/net6.0/project-b.AssemblyInfo.cs
+/home/james/mybuild2/example-monorepo/project-b/obj/Debug/net6.0/project-b.csproj.CoreCompileInputs.cache
+/home/james/mybuild2/example-monorepo/project-b/obj/Debug/net6.0/project-b.dll
+/home/james/mybuild2/example-monorepo/project-b/obj/Debug/net6.0/ref/project-b.dll
+/home/james/mybuild2/example-monorepo/project-b/obj/Debug/net6.0/project-b.pdb

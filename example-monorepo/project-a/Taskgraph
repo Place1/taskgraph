@@ -1,0 +1,35 @@
+filegroup(
+  name = "sources",
+  srcs = [
+    "./**/*.cs",
+    "./**/*.csproj",
+  ],
+)
+
+task(
+  name = "build",
+  cmds = ["dotnet build"],
+  srcs = ["./**/*.cs", "./**/*.csproj"],
+  deps = [":sources", "//project-b:build"],
+  outs = ["./bin/**/*", "./obj/**/*"],
+)
+
+process(
+  name = "serve",
+  cmds = [
+    "dotnet bin/Debug/net6.0/project-a.dll"
+  ],
+  deps = [
+    ":build",
+    "//scripts:postgres",
+  ],
+  ready = "Application started."
+)
+
+task(
+  name = "test",
+  cmds = ["dotnet test"],
+  deps = [
+    ":serve",
+  ]
+)

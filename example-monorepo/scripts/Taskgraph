@@ -1,0 +1,7 @@
+process(
+  name = "postgres",
+  cmds = [
+    "docker run --rm -i -e POSTGRES_PASSWORD=password postgres:12-alpine"
+  ],
+  ready = "database system is ready to accept connections"
+)
