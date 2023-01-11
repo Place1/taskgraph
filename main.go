@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"taskgraph/internal"
+	"taskgraph/internal/output"
 	"taskgraph/internal/pm"
 	"taskgraph/internal/rules"
 	"taskgraph/internal/taskengine"
@@ -19,10 +20,12 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
+var cwd, _ = os.Getwd()
+
 var (
 	app              = kingpin.New(internal.AppName, "todo help text")
 	verbose          = app.Flag("verbose", "enable verbose logging").Bool()
-	workspaceDirFlag = app.Flag("workspace", "the path to the workspace directory").String()
+	workspaceDirFlag = app.Flag("workspace", "the path to the workspace directory").Default(cwd).String()
 
 	runcmd       = app.Command("run", "run a task from a build file")
 	runcmdTarget = runcmd.Arg("target", "a task name from a build file").Required().String()
@@ -60,6 +63,17 @@ func main() {
 }
 
 func run(ctx context.Context, target string, workspaceDir string) error {
+	processManager := pm.New(ctx)
+	ctx = context.WithValue(ctx, "pm.ProcessManager", processManager)
+
+	out := output.NewStd()
+	ctx = context.WithValue(ctx, "output.OutputFactory", out)
+
+	workspaceFile, err := findWorkspaceFile(workspaceDir)
+	if err != nil {
+		return err
+	}
+
 	w, err := loadWorkspace(ctx, workspaceDir)
 	if err != nil {
 		return err
@@ -67,7 +81,9 @@ func run(ctx context.Context, target string, workspaceDir string) error {
 
 	for i := 0; i < len(w); i++ {
 		w[i] = &rules.Checksum{
-			Inner: w[i],
+			Inner:        w[i],
+			WorkspaceDir: filepath.Dir(workspaceFile),
+			Stdout:       out.Stdout(w[i].ID()),
 		}
 	}
 
@@ -87,6 +103,16 @@ func run(ctx context.Context, target string, workspaceDir string) error {
 		}
 	}
 
+	// hack so that you can run "taskgraph run .:target" as a shorthand
+	// for "//current/package:target"
+	if strings.HasPrefix(target, ".:") {
+		pkg, err := filepath.Rel(filepath.Dir(workspaceFile), cwd)
+		if err != nil {
+			return err
+		}
+		target = strings.Replace(target, ".", "//"+pkg, 1)
+	}
+
 	// hack so that you can run "taskgraph run :target" in a workspace
 	// to run all matching targets from all packages
 	if strings.HasPrefix(target, ":") {
@@ -94,8 +120,8 @@ func run(ctx context.Context, target string, workspaceDir string) error {
 		g.AddTask(&rules.Task{
 			IID:    iid,
 			Cmds:   []string{},
-			Stdout: os.Stdout,
-			Stderr: os.Stderr,
+			Stdout: out.Stdout(iid),
+			Stderr: out.Stderr(iid),
 		})
 		for _, r := range w {
 			if strings.HasSuffix(r.ID(), target) {
@@ -105,12 +131,18 @@ func run(ctx context.Context, target string, workspaceDir string) error {
 		target = iid
 	}
 
-	processManager := pm.New(ctx)
-
-	ctx = context.WithValue(ctx, "pm.ProcessManager", processManager)
-
 	engine := taskengine.New()
 
+	logrus.Info("original tree")
+	if err := engine.Tree(os.Stdout, g, target); err != nil {
+		return err
+	}
+
+	logrus.Info("transative reduction")
+	g, err = g.TransativeReduction()
+	if err != nil {
+		return err
+	}
 	if err := engine.Tree(os.Stdout, g, target); err != nil {
 		return err
 	}
@@ -136,20 +168,7 @@ func list(ctx context.Context, workspaceDir string) error {
 }
 
 func loadWorkspace(ctx context.Context, workspaceDir string) ([]rules.Rule, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, err
-	}
-
-	if workspaceDir == "" {
-		workspaceDir = cwd
-	}
-
-	if !path.IsAbs(workspaceDir) {
-		workspaceDir = filepath.Clean(filepath.Join(cwd, workspaceDir))
-	}
-
-	w, err := findWorkspace(workspaceDir)
+	w, err := findWorkspaceFile(workspaceDir)
 	if err != nil {
 		return nil, err
 	}
@@ -162,19 +181,27 @@ func loadWorkspace(ctx context.Context, workspaceDir string) ([]rules.Rule, erro
 	return r, nil
 }
 
-func findWorkspace(cwd string) (string, error) {
+func findWorkspaceFile(workspaceDir string) (string, error) {
+	if workspaceDir == "" {
+		workspaceDir = cwd
+	}
+
+	if !path.IsAbs(workspaceDir) {
+		workspaceDir = filepath.Clean(filepath.Join(cwd, workspaceDir))
+	}
+
 	for {
-		p := filepath.Join(cwd, internal.WorkspaceFile)
+		p := filepath.Join(workspaceDir, internal.WorkspaceFile)
 
 		fi, err := os.Stat(p)
 		if err == nil && !fi.IsDir() {
 			return p, nil
 		}
 
-		if cwd == filepath.Dir(cwd) {
+		if workspaceDir == filepath.Dir(workspaceDir) {
 			return "", fmt.Errorf("unable to find %s file in the current directory or any parent directory", internal.WorkspaceFile)
 		}
 
-		cwd = filepath.Dir(cwd)
+		workspaceDir = filepath.Dir(workspaceDir)
 	}
 }

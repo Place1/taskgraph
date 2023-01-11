@@ -35,20 +35,28 @@ func (p *Process) Execute(ctx context.Context) error {
 
 	processManager.Start(func(ctx context.Context) error {
 		pr, w := io.Pipe()
-		r := io.TeeReader(pr, os.Stdout)
+		r := io.TeeReader(pr, p.Stdout)
 
+		// TODO: need to implement a timeout mechanic
+		// TODO: need to support context cancellation for ctrl+c handling
+		// TODO: need to be able to signal "done" with an error (i.e. timeout or ctrl+c)
 		go func() {
-			done <- <-WaitForText(ctx, r, p.Ready)
+			if p.Ready != "" {
+				done <- <-WaitForText(ctx, r, p.Ready)
+			} else {
+				done <- true
+				// TODO: this is a hack because we need to consume the reader
+				// otherwise the program blocks.
+				// WiatForText() consumes the reader in a goroutine which is hacky too.
+				io.Copy(ioutil.Discard, r)
+			}
 		}()
-		// done <- true
 
 		return execext.RunCommands(ctx, p.Cmds, &execext.RunCommandOptions{
 			Env:    os.Environ(),
 			Dir:    p.Cwd,
 			Stdout: w,
 			Stderr: p.Stderr,
-			// Stdout: os.Stdout,
-			// Stderr: os.Stderr,
 		})
 	})
 
@@ -78,6 +86,7 @@ func (t *Process) Getwd() string {
 
 var _ Rule = &Process{}
 
+// TODO: need to support context cancellation.
 func WaitForText(ctx context.Context, in io.Reader, search string) chan bool {
 	resultchan := make(chan bool, 1)
 

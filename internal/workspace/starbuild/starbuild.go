@@ -3,9 +3,9 @@ package starbuild
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
+	"taskgraph/internal/output"
 	"taskgraph/internal/rules"
 
 	"github.com/samber/lo"
@@ -19,6 +19,8 @@ func Exec(ctx context.Context, packageName string, file string) ([]rules.Rule, e
 	}
 
 	cwd := filepath.Dir(file)
+
+	out := ctx.Value("output.OutputFactory").(output.OutputFactory)
 
 	r := []rules.Rule{}
 
@@ -52,8 +54,8 @@ func Exec(ctx context.Context, packageName string, file string) ([]rules.Rule, e
 			}),
 
 			Cwd:    cwd,
-			Stdout: os.Stdout,
-			Stderr: os.Stderr,
+			Stdout: out.Stdout(fqname),
+			Stderr: out.Stderr(fqname),
 		})
 
 		return starlark.None, nil
@@ -86,8 +88,8 @@ func Exec(ctx context.Context, packageName string, file string) ([]rules.Rule, e
 			Ready: ready,
 
 			Cwd:    cwd,
-			Stdout: os.Stdout,
-			Stderr: os.Stderr,
+			Stdout: out.Stdout(fqname),
+			Stderr: out.Stderr(fqname),
 		})
 
 		return starlark.None, nil

@@ -5,12 +5,17 @@ package execext
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
+	"golang.org/x/sync/errgroup"
 	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/interp"
 	"mvdan.cc/sh/v3/shell"
@@ -50,7 +55,7 @@ func RunCommand(ctx context.Context, cmd string, opts *RunCommandOptions) error 
 	r, err := interp.New(
 		interp.Params("-e"),
 		interp.Env(expand.ListEnviron(environ...)),
-		interp.ExecHandler(interp.DefaultExecHandler(2*time.Second)),
+		interp.ExecHandler(ExecHandler(2*time.Second)),
 		interp.OpenHandler(openHandler),
 		interp.StdIO(opts.Stdin, opts.Stdout, opts.Stderr),
 		dirOption(opts.Dir),
@@ -120,5 +125,91 @@ func dirOption(path string) interp.RunnerOption {
 		}
 
 		return err
+	}
+}
+
+func ExecHandler(killTimeout time.Duration) interp.ExecHandlerFunc {
+	return func(ctx context.Context, args []string) error {
+		hc := interp.HandlerCtx(ctx)
+		path, err := interp.LookPathDir(hc.Dir, hc.Env, args[0])
+		if err != nil {
+			fmt.Fprintln(hc.Stderr, err)
+			return interp.NewExitStatus(127)
+		}
+		cmd := exec.Cmd{
+			Path: path,
+			Args: args,
+			// Env:    hc.Env,
+			Dir:    hc.Dir,
+			Stdin:  hc.Stdin,
+			Stdout: hc.Stdout,
+			Stderr: hc.Stderr,
+		}
+
+		wg, ctx := errgroup.WithContext(ctx)
+		procdone := make(chan struct{}, 1)
+
+		wg.Go(func() error {
+			defer func() {
+				procdone <- struct{}{}
+			}()
+
+			if err := cmd.Start(); err != nil {
+				return err
+			}
+
+			return cmd.Wait()
+		})
+
+		wg.Go(func() error {
+			done := false
+
+			select {
+			case <-ctx.Done():
+			case <-procdone:
+				done = true
+			}
+
+			if !done {
+				if killTimeout <= 0 || runtime.GOOS == "windows" {
+					return cmd.Process.Signal(os.Kill)
+				}
+
+				cmd.Process.Signal(os.Interrupt)
+
+				select {
+				case <-procdone:
+					return nil
+				case <-time.After(killTimeout):
+					return cmd.Process.Signal(os.Kill)
+				}
+			} else {
+				return nil
+			}
+		})
+
+		err = wg.Wait()
+
+		switch x := err.(type) {
+		case *exec.ExitError:
+			// started, but errored - default to 1 if OS
+			// doesn't have exit statuses
+			if status, ok := x.Sys().(syscall.WaitStatus); ok {
+				if status.Signaled() {
+					if ctx.Err() != nil {
+						return ctx.Err()
+					}
+					return interp.NewExitStatus(uint8(128 + status.Signal()))
+				}
+				return interp.NewExitStatus(uint8(status.ExitStatus()))
+			}
+			return interp.NewExitStatus(1)
+		case *exec.Error:
+			// did not start
+			fmt.Fprintf(hc.Stderr, "%v\n", err)
+			return interp.NewExitStatus(127)
+		default:
+			return err
+		}
 	}
 }

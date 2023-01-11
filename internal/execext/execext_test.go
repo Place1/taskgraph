@@ -20,6 +20,7 @@ func TestContextCancel(t *testing.T) {
 		done <- true
 	}()
 
+	<-time.After(500 * time.Millisecond)
 	cancel()
 
 	select {

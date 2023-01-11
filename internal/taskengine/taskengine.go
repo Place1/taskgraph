@@ -65,7 +65,7 @@ type graphwalk struct {
 }
 
 func (ge *graphwalk) concurrentWalk(ctx context.Context, concurrencyLimit *semaphore.Weighted, graph taskgraph.TaskGraph, depth int, root rules.Rule, visit func(ctx context.Context, depth int, t rules.Rule) error) error {
-	seen, loaded := ge.visited.LoadOrStore(root.ID(), true)
+	seen, loaded := ge.visited.LoadOrStore(root.ID(), true) // TODO: this shouldn't be needed because of the transative reduction applied to the graph
 	if seen.(bool) && loaded {
 		return nil
 	}

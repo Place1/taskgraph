@@ -20,11 +20,17 @@ import (
 )
 
 type Checksum struct {
-	Inner Rule
+	Inner        Rule
+	WorkspaceDir string
+	Stdout       io.Writer
 }
 
 // Execute implements Rule
 func (c *Checksum) Execute(ctx context.Context) error {
+	if len(c.Inner.Inputs()) == 0 {
+		return c.Inner.Execute(ctx)
+	}
+
 	current, err := checksum(hostfs.FS(), c.Inner.Getwd(), c.Inputs(), []string{})
 	if err != nil {
 		return err
@@ -45,10 +51,8 @@ func (c *Checksum) Execute(ctx context.Context) error {
 		return nil
 	}
 
-	fmt.Println("task is up-to-date")
+	fmt.Fprintf(c.Stdout, "%s is up-to-date\n", c.Inner.ID())
 	return nil
-
-	return c.Inner.Execute(ctx)
 }
 
 // Dependencies implements Rule
@@ -87,9 +91,11 @@ func checksum(fs fs.FS, cwd string, includes []string, excludes []string) (strin
 		}
 
 		for _, path := range results {
-			relpath, _ := filepath.Rel(cwd, path)
-			if !excluded(excludes, relpath) {
-				paths.Add(path)
+			if f, _ := os.Stat(path); !f.IsDir() {
+				relpath, _ := filepath.Rel(cwd, path)
+				if !excluded(excludes, relpath) {
+					paths.Add(path)
+				}
 			}
 		}
 	}
@@ -131,7 +137,7 @@ func (t *Checksum) load() (string, error) {
 	if os.IsNotExist(err) {
 		return "", nil
 	} else if err != nil {
-		return "", err
+		return "", errors.Wrap(err, "failed to load task checksum")
 	}
 
 	return strings.TrimSpace(string(b)), nil
@@ -140,19 +146,20 @@ func (t *Checksum) load() (string, error) {
 func (t *Checksum) store(c string) error {
 	path := t.path()
 
-	if err := os.Mkdir(filepath.Dir(path), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		if !os.IsExist(err) {
 			return err
 		}
 	}
 
 	if err := ioutil.WriteFile(path, []byte(c), 0644); err != nil {
-		return err
+		return errors.Wrap(err, "failed to write task checksum")
+
 	}
 
 	return nil
 }
 
 func (t *Checksum) path() string {
-	return filepath.Join("/home/james/mybuild2/example-monorepo", ".task", t.ID())
+	return filepath.Join(t.WorkspaceDir, ".taskgraph", t.ID())
 }
