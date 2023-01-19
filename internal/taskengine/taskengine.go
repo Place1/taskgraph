@@ -4,15 +4,13 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"runtime"
 	"sync"
+	"taskgraph/internal/execgraph"
 	"taskgraph/internal/rules"
 	"taskgraph/internal/taskgraph"
 
-	"github.com/sirupsen/logrus"
 	"github.com/xlab/treeprint"
 	"golang.org/x/sync/errgroup"
-	"golang.org/x/sync/semaphore"
 )
 
 type Engine interface {
@@ -52,19 +50,35 @@ func (e *engine) tree(graph taskgraph.TaskGraph, tree treeprint.Tree, t rules.Ru
 
 // Execute implements Engine
 func (e *engine) Execute(ctx context.Context, graph taskgraph.TaskGraph, taskID string) error {
-	walk := graphwalk{}
-	limit := semaphore.NewWeighted(int64(runtime.NumCPU()))
-	return walk.concurrentWalk(ctx, limit, graph, 0, graph.FindTask(taskID), func(ctx context.Context, depth int, t rules.Rule) error {
-		logrus.Debugf("executing task depth=%d id=%s", depth, t.ID())
-		return t.Execute(ctx)
-	})
+	eg := execgraph.New()
+
+	for _, v := range graph.Tasks() {
+		eg.Add(v.ID(), v.Execute)
+	}
+
+	for _, e := range graph.Dependencies() {
+		eg.AddDependency(e[0], e[1])
+	}
+
+	return eg.Execute(ctx, taskID)
+
+	// TODO: remove and see if we can refactor the taskgraph, execgraph and taskengine to feel less messy
+	//
+	// walk := graphwalk{}
+	// limit := semaphore.NewWeighted(int64(runtime.NumCPU()))
+	// return walk.concurrentWalk(ctx, graph, 0, graph.FindTask(taskID), func(ctx context.Context, depth int, t rules.Rule) error {
+	// 	limit.Acquire(ctx, 1)
+	// 	defer limit.Release(1)
+	// 	logrus.Debugf("executing task depth=%d id=%s", depth, t.ID())
+	// 	return t.Execute(ctx)
+	// })
 }
 
 type graphwalk struct {
 	visited sync.Map
 }
 
-func (ge *graphwalk) concurrentWalk(ctx context.Context, concurrencyLimit *semaphore.Weighted, graph taskgraph.TaskGraph, depth int, root rules.Rule, visit func(ctx context.Context, depth int, t rules.Rule) error) error {
+func (ge *graphwalk) concurrentWalk(ctx context.Context, graph taskgraph.TaskGraph, depth int, root rules.Rule, visit func(ctx context.Context, depth int, t rules.Rule) error) error {
 	seen, loaded := ge.visited.LoadOrStore(root.ID(), true) // TODO: this shouldn't be needed because of the transative reduction applied to the graph
 	if seen.(bool) && loaded {
 		return nil
@@ -76,7 +90,7 @@ func (ge *graphwalk) concurrentWalk(ctx context.Context, concurrencyLimit *semap
 		for _, t := range graph.FindDependencies(root.ID()) {
 			task := t
 			errg.Go(func() error {
-				return ge.concurrentWalk(errctx, concurrencyLimit, graph, depth+1, task, visit)
+				return ge.concurrentWalk(errctx, graph, depth+1, task, visit)
 			})
 		}
 
@@ -85,8 +99,6 @@ func (ge *graphwalk) concurrentWalk(ctx context.Context, concurrencyLimit *semap
 		}
 	}
 
-	concurrencyLimit.Acquire(ctx, 1)
-	defer concurrencyLimit.Release(1)
 	return visit(ctx, depth, root)
 }
 

@@ -116,7 +116,7 @@ func run(ctx context.Context, target string, workspaceDir string) error {
 	// hack so that you can run "taskgraph run :target" in a workspace
 	// to run all matching targets from all packages
 	if strings.HasPrefix(target, ":") {
-		iid := "-"
+		iid := "//-"
 		g.AddTask(&rules.Task{
 			IID:    iid,
 			Cmds:   []string{},
@@ -131,18 +131,14 @@ func run(ctx context.Context, target string, workspaceDir string) error {
 		target = iid
 	}
 
+	// hack so that you can skip typing the "//" id prefix
+	if !strings.HasPrefix(target, "//") {
+		target = "//" + target
+	}
+
 	engine := taskengine.New()
 
 	logrus.Info("original tree")
-	if err := engine.Tree(os.Stdout, g, target); err != nil {
-		return err
-	}
-
-	logrus.Info("transative reduction")
-	g, err = g.TransativeReduction()
-	if err != nil {
-		return err
-	}
 	if err := engine.Tree(os.Stdout, g, target); err != nil {
 		return err
 	}

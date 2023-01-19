@@ -41,6 +41,11 @@ func (c *Checksum) Execute(ctx context.Context) error {
 		return err
 	}
 
+	// TODO: need to do something with the Outputs()
+	// so that if the outputs are deleted then we know we
+	// need to rebuild.
+	// perhaps we can include outputs in the hash
+
 	if current != previous {
 		if err := c.Inner.Execute(ctx); err != nil {
 			return err
